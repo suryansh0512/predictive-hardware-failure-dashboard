@@ -7,5 +7,13 @@ Architectural components to be added in Phase 3:
 - Supervised Ensemble: Random Forest, LightGBM, and XGBoost classifiers
 """
 
-# Mission 3 will export model estimators and inference pipelines from here
-__all__ = []
+from models.anomaly import IsolationForestAnomalyDetector, get_anomaly_detector
+from models.risk_engine import HardwareRiskEngine, get_risk_engine
+
+__all__ = [
+    "IsolationForestAnomalyDetector",
+    "get_anomaly_detector",
+    "HardwareRiskEngine",
+    "get_risk_engine",
+]
+

@@ -23,3 +23,34 @@ CREATE TABLE IF NOT EXISTS telemetry (
 CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry (timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_entity_ts ON telemetry (entity_class, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_host_ts ON telemetry (host_id, timestamp DESC);
+
+-- Alerts table for automated threshold and risk violation tracking
+CREATE TABLE IF NOT EXISTS alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,                     -- UTC ISO-8601
+    entity_class TEXT NOT NULL,                 -- 'HDD', 'RAM', 'CPU', or 'SYSTEM'
+    severity TEXT NOT NULL CHECK(severity IN ('INFO', 'WARNING', 'CRITICAL')),
+    metric_name TEXT NOT NULL,                  -- e.g. 'cpu_usage_pct', 'temperature_c', 'reallocated_sectors', 'composite_risk'
+    metric_value REAL,                          -- Value that triggered the alert
+    threshold REAL,                             -- Threshold breached
+    message TEXT NOT NULL,                      -- Human-readable alert summary
+    remediation TEXT,                           -- Prescribed action/remediation step
+    acknowledged INTEGER NOT NULL DEFAULT 0     -- 0 = active, 1 = acknowledged
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_timestamp ON alerts (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity, timestamp DESC);
+
+-- Anomaly events table logged by the Isolation Forest detector
+CREATE TABLE IF NOT EXISTS anomaly_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,                     -- UTC ISO-8601
+    entity_class TEXT NOT NULL,
+    anomaly_score REAL NOT NULL,                 -- Calibrated score (0.0 - 1.0)
+    is_anomaly INTEGER NOT NULL,                 -- 1 if anomaly detected, 0 if normal
+    feature_summary TEXT,                        -- JSON summary of contributing features
+    host_id TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_anomaly_timestamp ON anomaly_events (timestamp DESC);
+

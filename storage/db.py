@@ -201,3 +201,135 @@ def export_to_parquet(output_filepath: Path | str, db_path: Path | str | None = 
     if not df.empty:
         df.to_parquet(out_path, index=False, engine="pyarrow")
     return len(df)
+
+
+def get_all_telemetry_df(db_path: Path | str | None = None) -> pd.DataFrame:
+    """Retrieves all telemetry records as a pandas DataFrame."""
+    with db_session(db_path) as conn:
+        return pd.read_sql_query("SELECT * FROM telemetry ORDER BY id ASC;", conn)
+
+
+# =========================================================================
+# Alert Storage Operations
+# =========================================================================
+
+def insert_alert(alert: Dict[str, Any], db_path: Path | str | None = None) -> int:
+    """Inserts a new hardware risk or metric alert into SQLite."""
+    now_iso = alert.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    sql = """
+        INSERT INTO alerts (
+            timestamp, entity_class, severity, metric_name,
+            metric_value, threshold, message, remediation, acknowledged
+        ) VALUES (
+            :timestamp, :entity_class, :severity, :metric_name,
+            :metric_value, :threshold, :message, :remediation, :acknowledged
+        );
+    """
+    params = {
+        "timestamp": now_iso,
+        "entity_class": alert.get("entity_class", "SYSTEM"),
+        "severity": alert.get("severity", "WARNING"),
+        "metric_name": alert.get("metric_name", "unknown"),
+        "metric_value": alert.get("metric_value"),
+        "threshold": alert.get("threshold"),
+        "message": alert.get("message", "Hardware warning detected"),
+        "remediation": alert.get("remediation"),
+        "acknowledged": int(alert.get("acknowledged", 0)),
+    }
+    with db_session(db_path) as conn:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_alerts(
+    severity: Optional[str] = None,
+    acknowledged: Optional[int] = None,
+    limit: int = 50,
+    db_path: Path | str | None = None,
+) -> List[Dict[str, Any]]:
+    """Retrieves alerts, optionally filtered by severity or acknowledgment status."""
+    query = "SELECT * FROM alerts WHERE 1=1"
+    params: List[Any] = []
+
+    if severity:
+        query += " AND severity = ?"
+        params.append(severity)
+    if acknowledged is not None:
+        query += " AND acknowledged = ?"
+        params.append(int(acknowledged))
+
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+
+    with db_session(db_path) as conn:
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def acknowledge_alert(alert_id: int, db_path: Path | str | None = None) -> bool:
+    """Marks an alert as acknowledged."""
+    sql = "UPDATE alerts SET acknowledged = 1 WHERE id = ?;"
+    with db_session(db_path) as conn:
+        cursor = conn.execute(sql, (alert_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_alert_counts(db_path: Path | str | None = None) -> Dict[str, int]:
+    """Returns total, active (unacknowledged), and critical counts."""
+    with db_session(db_path) as conn:
+        total = conn.execute("SELECT COUNT(*) as cnt FROM alerts;").fetchone()["cnt"]
+        active = conn.execute("SELECT COUNT(*) as cnt FROM alerts WHERE acknowledged = 0;").fetchone()["cnt"]
+        critical = conn.execute("SELECT COUNT(*) as cnt FROM alerts WHERE severity = 'CRITICAL' AND acknowledged = 0;").fetchone()["cnt"]
+        return {"total": total, "active": active, "critical": critical}
+
+
+# =========================================================================
+# Anomaly Events Storage Operations
+# =========================================================================
+
+def insert_anomaly_event(event: Dict[str, Any], db_path: Path | str | None = None) -> int:
+    """Logs an anomaly detection event emitted by the ML inference engine."""
+    now_iso = event.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    sql = """
+        INSERT INTO anomaly_events (
+            timestamp, entity_class, anomaly_score, is_anomaly, feature_summary, host_id
+        ) VALUES (
+            :timestamp, :entity_class, :anomaly_score, :is_anomaly, :feature_summary, :host_id
+        );
+    """
+    params = {
+        "timestamp": now_iso,
+        "entity_class": event.get("entity_class", "CPU"),
+        "anomaly_score": float(event.get("anomaly_score", 0.0)),
+        "is_anomaly": 1 if event.get("is_anomaly") else 0,
+        "feature_summary": event.get("feature_summary"),
+        "host_id": event.get("host_id", "edge-node"),
+    }
+    with db_session(db_path) as conn:
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_latest_anomalies(
+    limit: int = 20,
+    entity_class: Optional[str] = None,
+    db_path: Path | str | None = None,
+) -> List[Dict[str, Any]]:
+    """Retrieves recent anomaly events."""
+    query = "SELECT * FROM anomaly_events WHERE 1=1"
+    params: List[Any] = []
+
+    if entity_class:
+        query += " AND entity_class = ?"
+        params.append(entity_class)
+
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+
+    with db_session(db_path) as conn:
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+

@@ -7,5 +7,15 @@ Architectural components to be added in Phase 4:
 - Edge Profiling: Memory footprint and inference latency benchmark
 """
 
-# Mission 4 will export evaluation harness classes from here
-__all__ = []
+from evaluation.evaluator import (
+    evaluate_anomaly_detector,
+    benchmark_edge_system,
+    run_full_evaluation,
+)
+
+__all__ = [
+    "evaluate_anomaly_detector",
+    "benchmark_edge_system",
+    "run_full_evaluation",
+]
+

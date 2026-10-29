@@ -14,8 +14,13 @@ __pycache__/
 *.db-journal
 *.db-wal
 *.db-shm
-data/
+data/*.db
+data/parquet/
+!data/
+!data/synthetic/
 !data/.gitkeep
+*.zip
+
 
 # Logs
 *.log
